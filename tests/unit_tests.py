@@ -22,6 +22,7 @@ import concurrent.futures
 import contextlib
 import hashlib
 import io
+import os
 import pathlib
 import sys
 import unittest
@@ -590,6 +591,34 @@ class TestRuleParser(unittest.TestCase):
         # does the result contain just the rule from the second parse
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]['rule_name'], 'rule_one')
+    
+    def test_includes_relative(self):
+        """ Test parsing relative includes """
+        # instantiate parser
+        parser = Plyara()
+
+        # open a ruleset with one include and parse the rules
+        with data_dir.joinpath('include_ruleset.yar').open('r') as fh:
+            rules = parser.parse_string(fh.read(), includes=True, includes_dir=data_dir)
+        
+        # include_ruleset.yar has 1 rule and the included ruleset string_ruleset.yar has 18 rules
+        # so there should be a total of 19 rules
+        self.assertEqual(len(rules), 19)
+        self.assertTrue('includes' in rules[0])
+        self.assertFalse(all('includes' in r for r in rules[1:]))
+    
+    def test_includes_absolute(self):
+        # instantiate parser
+        parser = Plyara()
+
+        # string to parse
+        inputString = f'''
+        include "{os.path.abspath(data_dir)}/string_ruleset.yar"
+        '''
+
+        rules = parser.parse_string(inputString, includes=True)
+        # the included ruleset string_ruleset.yar has 18 rules
+        self.assertEqual(len(rules), 18)
 
 
 class TestRuleParserKVMeta(unittest.TestCase):

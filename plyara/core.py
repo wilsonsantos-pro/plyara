@@ -22,6 +22,7 @@ include linters and dependency checkers.
 """
 import enum
 import logging
+import os
 import string
 import tempfile
 import re
@@ -278,25 +279,56 @@ class Parser:
         self._condition_start = None
         self._condition_end = None
 
-    def parse_string(self, input_string):
+    def _parse_includes(self, includes, includes_dir):
+        """Parse the included rule sets.
+        
+        Args:
+            includes_dir: String with the location of the included rule sets, when the includes are relative.
+        """
+        rules = list()
+        for included in includes:
+            if os.path.isabs(included):
+                file_path = included
+            else:
+                if includes_dir is None:
+                    raise ValueError('The includes are relative and no includes directory was provided')
+                file_path = os.path.join(includes_dir, included)
+            with open(file_path, 'r') as f:
+                self.clear()
+                _raw_input = f.read()
+                self._raw_input = _raw_input
+                self.parser.parse(_raw_input, lexer=self.lexer)
+                rules += self._add_imports_includes()
+        return rules
+    
+    def _add_imports_includes(self):
+        rules = []
+        for rule in self.rules:
+            rules.append(rule)
+            if any(self.imports):
+                rule['imports'] = list(self.imports)
+            if any(self.includes):
+                rule['includes'] = self.includes
+        return rules
+
+    def parse_string(self, input_string, includes=False, includes_dir=None):
         """Take a string input expected to consist of YARA rules, and return list of dictionaries representing them.
 
         Args:
             input_string: String input expected to consist of YARA rules.
+            includes: Whether includes should be parsed (only one level).
+            includes_dir: String with the location of the included rule sets, when the includes are relative.
 
         Returns:
             dict: All the parsed components of a YARA rule.
         """
         self._raw_input = input_string
         self.parser.parse(input_string, lexer=self.lexer)
-
-        for rule in self.rules:
-            if any(self.imports):
-                rule['imports'] = list(self.imports)
-            if any(self.includes):
-                rule['includes'] = self.includes
-
-        return self.rules
+        rules = self._add_imports_includes()
+        if includes and any(self.includes):
+            rules_includes = self._parse_includes(self.includes, includes_dir)
+            rules = rules + rules_includes
+        return rules
 
 
 class Plyara(Parser):
